@@ -12,8 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Square API
 // Pull settings (make sure you stored them with dotnet user-secrets or env vars)
-var accessToken = builder.Configuration["Square:AccessToken"]
-    ?? throw new InvalidOperationException("Square:AccessToken is missing.");
+var accessToken = builder.Configuration["Square:AccessToken"];
 var environment = builder.Configuration["Square:Environment"] ?? "sandbox";
 
 // Supabase API
@@ -28,11 +27,15 @@ var supabaseServiceKey = builder.Configuration["Supabase:ServiceKey"]
 builder.Services.AddAutoMapper(cfg => { }, typeof(AutoMapperProfile));
 
 builder.Services.AddScoped<ISupabaseService, SupabaseService>();
+builder.Services.AddSingleton<ISquareClientFactory, SquareClientFactory>();
 builder.Services.AddScoped<ISquareMenuSyncService, SquareMenuSyncService>();
 builder.Services.AddScoped<ISquareOrderSyncService, SquareOrderSyncService>();
-builder.Services.AddHostedService<SquareOrderSyncBackgroundService>();
+if (!string.IsNullOrWhiteSpace(accessToken))
+{
+    builder.Services.AddHostedService<SquareOrderSyncBackgroundService>();
+}
 builder.Services.AddSingleton(_ => new SquareClient(
-    token: accessToken,
+    token: accessToken ?? string.Empty,
     clientOptions: new ClientOptions
     {
         BaseUrl = environment.Equals("production", StringComparison.OrdinalIgnoreCase)
@@ -80,7 +83,6 @@ app.MapControllers();
 
 using var startupCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 await RunSupabaseSmokeTestAsync(app.Services, startupCts.Token);
-await RunSquareSmokeTestAsync(app.Services);
 
 if (app.Environment.IsDevelopment())
 {
@@ -92,60 +94,7 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-//Run Square → Supabase menu sync at startup (before the server blocks)
-var restaurantId = 1; // TODO: replace with your real restaurant id or config
-await using (var syncScope = app.Services.CreateAsyncScope())
-{
-    var sync = syncScope.ServiceProvider.GetRequiredService<ISquareMenuSyncService>();
-    try
-    {
-        using var syncCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        var upserted = await sync.ImportMenuItemsAsync(restaurantId, syncCts.Token);
-        Console.WriteLine($"Square sync completed: {upserted} item(s) upserted for restaurant {restaurantId}.");
-    }
-    catch (OperationCanceledException)
-    {
-        Console.WriteLine("Square menu sync startup skipped due to timeout.");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Square menu sync startup failed: {ex.Message}");
-    }
-}
-
 await app.RunAsync();
-static async Task RunSquareSmokeTestAsync(IServiceProvider services)
-{
-    await using var scope = services.CreateAsyncScope();
-    var client = scope.ServiceProvider.GetRequiredService<SquareClient>();
-    int count = 0;
-
-    try
-    {
-        var pager = await client.Catalog.ListAsync(new ListCatalogRequest());
-
-        await foreach (var catalogObject in pager)
-        {
-            if (!catalogObject.TryAsItem(out var item))
-            {
-                continue;
-            }
-
-            if (item is null)
-            {
-                continue;
-            }
-
-            count += 1;
-        }
-
-        Console.WriteLine(count + " item(s) found in Square");
-    }
-    catch (SquareApiException ex)
-    {
-        Console.WriteLine($"Square catalog list failed: {ex.Message}");
-    }
-}
 
 static async Task RunSupabaseSmokeTestAsync(IServiceProvider services, CancellationToken cancellationToken = default)
 {

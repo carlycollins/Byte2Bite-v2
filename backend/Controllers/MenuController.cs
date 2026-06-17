@@ -19,9 +19,15 @@ namespace backend.Controllers
         {
             if (restaurantId <= 0) return BadRequest("restaurantId must be a positive integer.");
 
-            var count = await _syncService.ImportMenuItemsAsync(restaurantId, ct);
-            return Ok(new { upserted = count });
+            try
+            {
+                var count = await _syncService.ImportMenuItemsForRestaurantAsync(restaurantId, ct);
+                return Ok(new { upserted = count });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
     }
 }
-

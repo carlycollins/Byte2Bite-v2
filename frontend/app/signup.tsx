@@ -79,15 +79,34 @@ export default function SignupScreen() {
       }
 
       if (data.user) {
+        const fullName = `${firstName} ${lastName}`.trim();
+        const savedRestaurant = await RestaurantsService.addRestaurant({
+          id: 0,
+          name: `${fullName || email}'s Restaurant`,
+          zip: "",
+          zipCode: "",
+          squareId: "",
+          squareAccessToken: "",
+        });
+
         const newProfile: UserProfile = {
           id: 0, 
           supabaseId: data.user.id,                      
-          fullName: `${firstName} ${lastName}`.trim(),
+          fullName,
           createdOn: new Date().toISOString(),
           email: data.user.email ?? email,
-          restaurant_Id: 1,
+          restaurant_Id: savedRestaurant.id,
         };
         const savedProfile = await UserProfilesService.addUserProfile(newProfile);
+
+        if (data.session) {
+          showAlert("Success", "Account created! Connect Square to continue.");
+          router.replace({
+            pathname: "/square-setup",
+            params: { restaurantId: savedProfile.restaurant_Id },
+          });
+          return;
+        }
       }
 
       // ✅ If a user was created, redirect to verifyemail immediately
@@ -100,8 +119,8 @@ export default function SignupScreen() {
       }
 
       if (data.session) {
-        showAlert("Success", "Account created! Redirecting...");
-        router.replace("/"); // ✅ Navigate to home
+        showAlert("Success", "Account created! Connect Square to continue.");
+        router.replace("/square-setup");
       }
     } catch (err: any) {
       console.error("Unexpected signup error:", err);

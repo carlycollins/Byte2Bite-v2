@@ -2,6 +2,8 @@ import { View, Text, Pressable, Platform } from "react-native";
 import { Slot, Link, Href, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { supabase } from "../services/supabaseClient";
+import { RestaurantsService } from "../services/RestaurantService";
+import { UserProfilesService } from "../services/UserProfileService";
 
 function getRecoverySearchFromLocation(): string | null {
   if (typeof window === "undefined") return null;
@@ -52,6 +54,25 @@ export default function RootLayout() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [emailPending, setEmailPending] = useState<string | null>(null);
 
+  const getSquareSetupRestaurantId = async (
+    supabaseUserId: string
+  ): Promise<number | null> => {
+    try {
+      const profile = await UserProfilesService.getUserProfileBySupabaseId(
+        supabaseUserId
+      );
+      if (!profile?.restaurant_Id) return null;
+
+      const restaurant = await RestaurantsService.getRestaurant(profile.restaurant_Id);
+      return RestaurantsService.hasSquareConnection(restaurant)
+        ? null
+        : profile.restaurant_Id;
+    } catch (err) {
+      console.error("Unable to check Square setup status:", err);
+      return null;
+    }
+  };
+
   useEffect(() => {
     if (Platform.OS === "web") {
       if (isRecoveryLink() && pathname !== "/reset-password") {
@@ -77,28 +98,44 @@ export default function RootLayout() {
           return;
         }
         const { data: userData } = await supabase.auth.getUser();
-        if (userData?.user && !userData.user.email_confirmed_at) {
-          setEmailPending(userData.user.email ?? null);
+        const user = userData?.user;
+        if (user && !user.email_confirmed_at) {
+          setEmailPending(user.email ?? null);
           if (pathname !== "/verifyemail") {
             router.replace({
               pathname: "/verifyemail",
-              params: { email: userData.user.email },
+              params: { email: user.email },
             });
           }
-        } else if (
-          pathname === "/login" ||
-          pathname === "/signup" ||
-          pathname === "/verifyemail"
-        ) {
-          router.replace("/");
+        } else if (user) {
+          const squareSetupRestaurantId = await getSquareSetupRestaurantId(
+            user.id
+          );
+          if (squareSetupRestaurantId && pathname !== "/square-setup") {
+            router.replace({
+              pathname: "/square-setup",
+              params: { restaurantId: squareSetupRestaurantId },
+            });
+          } else if (
+            !squareSetupRestaurantId &&
+            (pathname === "/login" ||
+              pathname === "/signup" ||
+              pathname === "/verifyemail" ||
+              pathname === "/square-setup")
+          ) {
+            router.replace("/");
+          }
+          setEmailPending(null);
         } else {
           setEmailPending(null);
+          router.replace("/login");
         }
       } else {
         if (
           pathname !== "/login" &&
           pathname !== "/signup" &&
           pathname !== "/verifyemail" &&
+          pathname !== "/square-setup" &&
           pathname !== "/reset-password"
         ) {
           router.replace("/login");
@@ -132,8 +169,18 @@ export default function RootLayout() {
               params: { email: user.email },
             });
           } else {
+            const squareSetupRestaurantId = user
+              ? await getSquareSetupRestaurantId(user.id)
+              : null;
             setEmailPending(null);
-            router.replace("/");
+            if (squareSetupRestaurantId) {
+              router.replace({
+                pathname: "/square-setup",
+                params: { restaurantId: squareSetupRestaurantId },
+              });
+            } else {
+              router.replace("/");
+            }
           }
         }
         if (_event === "SIGNED_OUT") {
@@ -150,6 +197,7 @@ export default function RootLayout() {
     pathname !== "/login" &&
     pathname !== "/signup" &&
     pathname !== "/verifyemail" &&
+    pathname !== "/square-setup" &&
     pathname !== "/reset-password" &&
     isAuthenticated;
 
@@ -177,7 +225,7 @@ export default function RootLayout() {
   };
 
   return (
-    <View style={{ flex: 1, minHeight: "100vh" }}>
+    <View style={{ flex: 1, minHeight: "100%" }}>
       {/* Top Bar */}
       <View
         style={{
@@ -217,13 +265,13 @@ export default function RootLayout() {
                     accessibilityRole="link"
                     style={{ paddingVertical: 8 }}
                   >
-                    {({ pressed, hovered }) => (
+                    {({ pressed }) => (
                       <Text
                         style={{
                           marginVertical: 7,
                           fontSize: 20,
                           fontWeight:
-                            isActive || pressed || hovered ? "700" : "400",
+                            isActive || pressed ? "700" : "400",
                         }}
                       >
                         {link.label}
@@ -235,7 +283,7 @@ export default function RootLayout() {
             })}
           </View>
         )}
-        <View style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+        <View style={{ flex: 1, minHeight: 0, overflow: "scroll" }}>
           <Slot />
         </View>
       </View>
