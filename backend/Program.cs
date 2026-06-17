@@ -25,7 +25,7 @@ var supabaseServiceKey = builder.Configuration["Supabase:ServiceKey"]
     ?? throw new InvalidOperationException("Supabase:ServiceKey is missing.");
 
 // AutoMapper
-builder.Services.AddAutoMapper(typeof(AutoMapperProfile));
+builder.Services.AddAutoMapper(cfg => { }, typeof(AutoMapperProfile));
 
 builder.Services.AddScoped<ISupabaseService, SupabaseService>();
 builder.Services.AddScoped<ISquareMenuSyncService, SquareMenuSyncService>();
@@ -39,6 +39,7 @@ builder.Services.AddSingleton(_ => new SquareClient(
             ? SquareEnvironment.Production
             : SquareEnvironment.Sandbox
     }));
+
 // Register minimal services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -63,7 +64,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowReactApp", policy =>
     {
         policy
-            .WithOrigins("http://localhost:8081") 
+            .WithOrigins("http://localhost:8081")
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
@@ -81,7 +82,8 @@ using var startupCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 await RunSupabaseSmokeTestAsync(app.Services, startupCts.Token);
 await RunSquareSmokeTestAsync(app.Services);
 
-if(app.Environment.IsDevelopment()){
+if (app.Environment.IsDevelopment())
+{
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
@@ -90,7 +92,7 @@ if(app.Environment.IsDevelopment()){
     });
 }
 
-// Run Square → Supabase menu sync at startup (before the server blocks)
+//Run Square → Supabase menu sync at startup (before the server blocks)
 var restaurantId = 1; // TODO: replace with your real restaurant id or config
 await using (var syncScope = app.Services.CreateAsyncScope())
 {
@@ -134,7 +136,7 @@ static async Task RunSquareSmokeTestAsync(IServiceProvider services)
                 continue;
             }
 
-            count +=1;
+            count += 1;
         }
 
         Console.WriteLine(count + " item(s) found in Square");
