@@ -11,7 +11,7 @@ namespace backend.Services
     {
         private readonly SquareClient _square;
         private readonly ILogger<SquareOrderSyncService> _logger;
-        private readonly List<string> _locationIds = new() { "LNFCWD2PQ2MGD" }; // TODO: make configurable
+        private readonly List<string> _locationIds = new() { "L7R9GHW1MW5TY" }; // TODO: make configurable
 
         public SquareOrderSyncService(SquareClient squareClient, ILogger<SquareOrderSyncService> logger)
         {
