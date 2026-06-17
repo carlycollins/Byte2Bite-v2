@@ -32,17 +32,6 @@ export default function MenuItemsPage() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    const importSquareCatalog = async () => {
-      try {
-        await menuService.importMenuItems(1 /* hardcoded to sandbox for now */);
-      } catch (err) {
-        console.error("Error importing square catalog:", err);
-      }
-    };
-    importSquareCatalog();
-  }, []);
-
-  useEffect(() => {
     const fetchMenuItems = async () => {
       try {
         setIsLoading(true);

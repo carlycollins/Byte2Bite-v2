@@ -149,7 +149,7 @@ export default function ResetPasswordScreen() {
       )}
 
       <Text style={styles.helpText}>
-        After updating, you'll be redirected to the login screen.
+        After updating, you&apos;ll be redirected to the login screen.
       </Text>
     </View>
   );

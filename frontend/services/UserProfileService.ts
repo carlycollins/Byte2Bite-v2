@@ -30,6 +30,19 @@ async function getUserProfile(id: number): Promise<UserProfile> {
   return res.json();
 }
 
+async function getUserProfileBySupabaseId(
+  supabaseId: string
+): Promise<UserProfile | null> {
+  const users = await getAllUsers();
+  return (
+    users.find(
+      (u) =>
+        (u.supabaseId ?? "").toLowerCase() === supabaseId.toLowerCase() ||
+        ((u as any).supabase_id ?? "").toLowerCase() === supabaseId.toLowerCase()
+    ) ?? null
+  );
+}
+
 async function addUserProfile(userDto: UserProfile): Promise<UserProfile> {
   const res = await fetch(API_URL, {
     method: "POST",
@@ -70,6 +83,7 @@ async function deleteUserProfile(id: number): Promise<void> {
 export const UserProfilesService = {
   getAllUsers,
   getUserProfile,
+  getUserProfileBySupabaseId,
   addUserProfile,
   updateUserProfile,
   deleteUserProfile,

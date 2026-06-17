@@ -9,22 +9,46 @@ namespace backend.Services
 {
     public class SquareMenuSyncService : ISquareMenuSyncService
     {
-        private readonly SquareClient _square;
+        private readonly ISquareClientFactory _squareClientFactory;
+        private readonly ISupabaseService _supabaseService;
         private readonly Supabase.Client _supabase;
 
-        public SquareMenuSyncService(SquareClient squareClient, ISupabaseService supabaseService)
+        public SquareMenuSyncService(ISquareClientFactory squareClientFactory, ISupabaseService supabaseService)
         {
-            _square = squareClient;
+            _squareClientFactory = squareClientFactory;
+            _supabaseService = supabaseService;
             _supabase = supabaseService.Client;
         }
 
-        public async Task<int> ImportMenuItemsAsync(int restaurantId, CancellationToken cancellationToken = default)
+        public async Task<int> ImportMenuItemsForRestaurantAsync(int restaurantId, CancellationToken cancellationToken = default)
         {
+            var restaurant = await _supabaseService.GetRestaurantByIdAsync(restaurantId);
+            if (restaurant is null)
+            {
+                throw new InvalidOperationException("Restaurant was not found.");
+            }
+
+            if (string.IsNullOrWhiteSpace(restaurant.SquareAccessToken))
+            {
+                throw new InvalidOperationException("Connect a Square account before importing menu items.");
+            }
+
+            return await ImportMenuItemsAsync(restaurantId, restaurant.SquareAccessToken, cancellationToken);
+        }
+
+        public async Task<int> ImportMenuItemsAsync(int restaurantId, string squareAccessToken, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(squareAccessToken))
+            {
+                throw new InvalidOperationException("Square access token is required.");
+            }
+
+            var square = _squareClientFactory.Create(squareAccessToken);
             var categories = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var items = new List<CatalogObject>();
 
             // List all catalog objects (Square pager supports await foreach)
-            var pager = await _square.Catalog.ListAsync(new ListCatalogRequest());
+            var pager = await square.Catalog.ListAsync(new ListCatalogRequest(), cancellationToken: cancellationToken);
             await foreach (var obj in pager)
             {
                 if (obj.TryAsCategory(out var cat) && cat is not null)
