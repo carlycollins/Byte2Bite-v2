@@ -12,13 +12,11 @@ namespace backend.Controllers
     {
         private readonly ISupabaseService _supabase;
         private readonly IMapper _mapper;
-        private readonly ISquareMenuSyncService _squareMenuSync;
 
-        public RestaurantsController(ISupabaseService supabase, IMapper mapper, ISquareMenuSyncService squareMenuSync)
+        public RestaurantsController(ISupabaseService supabase, IMapper mapper)
         {
             _supabase = supabase;
             _mapper = mapper;
-            _squareMenuSync = squareMenuSync;
         }
 
         [HttpGet]
@@ -52,39 +50,12 @@ namespace backend.Controllers
         public async Task<IActionResult> Update(int id, [FromBody] RestaurantDto dto)
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            var Restaurant = _mapper.Map<Restaurant>(dto);
-            var updated = await _supabase.UpdateRestaurantAsync(id, Restaurant);
-            return updated == null ? NotFound() : Ok(_mapper.Map<RestaurantDto>(updated));
-        }
-
-        [HttpPost("{id:int}/square/connect")]
-        public async Task<IActionResult> ConnectSquare(int id, [FromBody] SquareConnectionDto dto, CancellationToken ct)
-        {
-            if (!ModelState.IsValid) return BadRequest(ModelState);
-
             var restaurant = await _supabase.GetRestaurantByIdAsync(id);
             if (restaurant == null) return NotFound();
 
-            restaurant.SquareId = dto.SquareMerchantId.Trim();
-            restaurant.SquareAccessToken = dto.SquareAccessToken.Trim();
-
-            try
-            {
-                var upserted = await _squareMenuSync.ImportMenuItemsAsync(id, restaurant.SquareAccessToken, ct);
-                var updated = await _supabase.UpdateRestaurantAsync(id, restaurant);
-                if (updated == null) return StatusCode(500, "Failed to save Square connection.");
-
-                return Ok(new
-                {
-                    restaurantId = id,
-                    squareMerchantId = restaurant.SquareId,
-                    upserted
-                });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest($"Square connection failed: {ex.Message}");
-            }
+            _mapper.Map(dto, restaurant);
+            var updated = await _supabase.UpdateRestaurantAsync(id, restaurant);
+            return updated == null ? NotFound() : Ok(_mapper.Map<RestaurantDto>(updated));
         }
 
         [HttpDelete("{id:int}")]

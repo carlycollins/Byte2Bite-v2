@@ -15,7 +15,14 @@ namespace backend.Mapping
             CreateMap<Ingredient, WriteIngredientDto>().ReverseMap();
 
             // Map Restaurant <-> RestaurantDto
-            CreateMap<Restaurant, RestaurantDto>().ReverseMap();
+            CreateMap<Restaurant, RestaurantDto>()
+                .ForMember(dest => dest.SquareConnected, opt => opt.MapFrom(src =>
+                    !string.IsNullOrWhiteSpace(src.SquareId) &&
+                    !string.IsNullOrWhiteSpace(src.SquareAccessToken)));
+            CreateMap<RestaurantDto, Restaurant>()
+                .ForMember(dest => dest.SquareAccessToken, opt => opt.Ignore())
+                .ForMember(dest => dest.SquareRefreshToken, opt => opt.Ignore())
+                .ForMember(dest => dest.SquareTokenExpiresAt, opt => opt.Ignore());
 
             // Map UserProfile <-> UserDto
             CreateMap<UserProfile, UserDto>().ReverseMap();

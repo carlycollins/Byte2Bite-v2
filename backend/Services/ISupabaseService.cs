@@ -18,6 +18,7 @@ namespace backend.Services
         Task<bool> DeleteRestaurantAsync(int id);
         Task<IEnumerable<UserProfile>> GetUsersAsync(int limit = 100);
         Task<UserProfile?> GetUserByIdAsync(int id);
+        Task<UserProfile?> GetUserBySupabaseIdAsync(Guid supabaseId);
         Task<UserProfile?> CreateUserAsync(UserProfile user);
         Task<UserProfile?> UpdateUserAsync(int id, UserProfile user);
         Task<bool> DeleteUserAsync(int id);

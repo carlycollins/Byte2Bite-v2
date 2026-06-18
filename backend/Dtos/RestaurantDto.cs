@@ -13,10 +13,8 @@ namespace backend.Dtos
         [Required]
         public string ZipCode { get; set; } = null!;
 
-        [Required]
-        public string SquareId { get; set; } = null!;
+        public string SquareId { get; set; } = string.Empty;
 
-        [Required]
-        public string SquareAccessToken { get; set; } = null!;
+        public bool SquareConnected { get; set; }
     }
 }

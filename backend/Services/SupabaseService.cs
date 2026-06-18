@@ -188,6 +188,15 @@ namespace backend.Services
             return response.Models.FirstOrDefault();
         }
 
+        public async Task<UserProfile?> GetUserBySupabaseIdAsync(Guid supabaseId)
+        {
+            var response = await _client.From<UserProfile>()
+                                        .Where(profile => profile.supabaseId == supabaseId)
+                                        .Limit(1)
+                                        .Get();
+            return response.Models.FirstOrDefault();
+        }
+
         public async Task<UserProfile?> CreateUserAsync(UserProfile user)
         {
             var response = await _client.From<UserProfile>()

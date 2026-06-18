@@ -61,7 +61,7 @@ export default function RootLayout() {
       const profile = await UserProfilesService.getUserProfileBySupabaseId(
         supabaseUserId
       );
-      if (!profile?.restaurant_Id) return null;
+      if (!profile?.restaurant_Id) return -1;
 
       const restaurant = await RestaurantsService.getRestaurant(profile.restaurant_Id);
       return RestaurantsService.hasSquareConnection(restaurant)
@@ -69,7 +69,7 @@ export default function RootLayout() {
         : profile.restaurant_Id;
     } catch (err) {
       console.error("Unable to check Square setup status:", err);
-      return null;
+      return -1;
     }
   };
 
@@ -114,7 +114,10 @@ export default function RootLayout() {
           if (squareSetupRestaurantId && pathname !== "/square-setup") {
             router.replace({
               pathname: "/square-setup",
-              params: { restaurantId: squareSetupRestaurantId },
+              params:
+                squareSetupRestaurantId > 0
+                  ? { restaurantId: squareSetupRestaurantId }
+                  : undefined,
             });
           } else if (
             !squareSetupRestaurantId &&
@@ -176,7 +179,10 @@ export default function RootLayout() {
             if (squareSetupRestaurantId) {
               router.replace({
                 pathname: "/square-setup",
-                params: { restaurantId: squareSetupRestaurantId },
+                params:
+                  squareSetupRestaurantId > 0
+                    ? { restaurantId: squareSetupRestaurantId }
+                    : undefined,
               });
             } else {
               router.replace("/");
