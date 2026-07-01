@@ -1,20 +1,16 @@
 // services/RestaurantsService.ts
+import { supabase } from "./supabaseClient";
 export interface Restaurant {
   id: number;
   name: string;
   zip: string;
   zipCode?: string;
   squareId: string;
-  squareAccessToken: string;
-}
-
-export interface SquareConnectionResult {
-  restaurantId: number;
-  squareMerchantId: string;
-  upserted: number;
+  squareConnected: boolean;
 }
 
 const API_URL = "http://localhost:5038/api/Restaurants";
+const SQUARE_OAUTH_URL = "http://localhost:5038/api/square/oauth";
 
 async function getAllRestaurants(): Promise<Restaurant[]> {
   const res = await fetch(API_URL, {
@@ -57,26 +53,30 @@ async function updateRestaurant(
   return res.json();
 }
 
-async function connectSquare(
-  id: number,
-  payload: { squareMerchantId: string; squareAccessToken: string }
-): Promise<SquareConnectionResult> {
-  const res = await fetch(`${API_URL}/${id}/square/connect`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+async function getSquareAuthorizationUrl(id: number): Promise<string> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session?.access_token) {
+    throw new Error("Your session has expired. Please sign in again.");
+  }
+
+  const res = await fetch(`${SQUARE_OAUTH_URL}/authorize?restaurantId=${id}`, {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${data.session.access_token}`,
+    },
   });
 
   if (!res.ok) {
     const error = await res.text();
-    throw new Error(error || "Failed to connect Square");
+    throw new Error(error || "Failed to start Square authorization");
   }
 
-  return res.json();
+  const body = await res.json();
+  return body.authorizationUrl;
 }
 
 function hasSquareConnection(restaurant?: Restaurant | null): boolean {
-  return !!restaurant?.squareId?.trim() && !!restaurant?.squareAccessToken?.trim();
+  return restaurant?.squareConnected === true;
 }
 
 async function deleteRestaurant(id: number): Promise<void> {
@@ -91,7 +91,7 @@ export const RestaurantsService = {
   getRestaurant,
   addRestaurant,
   updateRestaurant,
-  connectSquare,
+  getSquareAuthorizationUrl,
   hasSquareConnection,
   deleteRestaurant,
 };

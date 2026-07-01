@@ -28,6 +28,7 @@ builder.Services.AddAutoMapper(cfg => { }, typeof(AutoMapperProfile));
 
 builder.Services.AddScoped<ISupabaseService, SupabaseService>();
 builder.Services.AddSingleton<ISquareClientFactory, SquareClientFactory>();
+builder.Services.AddHttpClient<ISquareOAuthService, SquareOAuthService>();
 builder.Services.AddScoped<ISquareMenuSyncService, SquareMenuSyncService>();
 builder.Services.AddScoped<ISquareOrderSyncService, SquareOrderSyncService>();
 if (!string.IsNullOrWhiteSpace(accessToken))
@@ -61,6 +62,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddDataProtection();
 
 builder.Services.AddCors(options =>
 {

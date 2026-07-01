@@ -86,7 +86,7 @@ export default function SignupScreen() {
           zip: "",
           zipCode: "",
           squareId: "",
-          squareAccessToken: "",
+          squareConnected: false,
         });
 
         const newProfile: UserProfile = {

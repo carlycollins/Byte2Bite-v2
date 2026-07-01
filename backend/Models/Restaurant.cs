@@ -16,10 +16,16 @@ namespace backend.Models
         public string ZipCode { get; set; } = null!;
 
         [Column("square_merchant_id")]
-        public string SquareId { get; set; } = null!;
+        public string SquareId { get; set; } = string.Empty;
 
         [Column("square_access_token")]
-        public string SquareAccessToken { get; set; } = null!;
+        public string SquareAccessToken { get; set; } = string.Empty;
+
+        [Column("square_refresh_token")]
+        public string? SquareRefreshToken { get; set; }
+
+        [Column("square_token_expires_at")]
+        public DateTimeOffset? SquareTokenExpiresAt { get; set; }
 
     }
 }

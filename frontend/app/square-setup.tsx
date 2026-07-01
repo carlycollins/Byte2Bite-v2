@@ -2,26 +2,34 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Button,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
+import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { RestaurantsService } from "@/services/RestaurantService";
 import { UserProfilesService } from "@/services/UserProfileService";
 import { supabase } from "@/services/supabaseClient";
 
+type SetupParams = {
+  restaurantId?: string;
+  square?: string;
+  message?: string;
+  imported?: string;
+};
+
 export default function SquareSetupScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ restaurantId?: string }>();
+  const params = useLocalSearchParams<SetupParams>();
+  const restaurantIdParam = params.restaurantId
+    ? Number(params.restaurantId)
+    : null;
   const [restaurantId, setRestaurantId] = useState<number | null>(
-    params.restaurantId ? Number(params.restaurantId) : null
+    restaurantIdParam && restaurantIdParam > 0 ? restaurantIdParam : null
   );
-  const [merchantId, setMerchantId] = useState("");
-  const [accessToken, setAccessToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingProfile, setCheckingProfile] = useState(true);
 
@@ -34,6 +42,12 @@ export default function SquareSetupScreen() {
   };
 
   useEffect(() => {
+    if (params.square === "error") {
+      showAlert("Square connection failed", params.message ?? "Please try again.");
+    }
+  }, [params.message, params.square]);
+
+  useEffect(() => {
     const loadRestaurantId = async () => {
       if (restaurantId) {
         setCheckingProfile(false);
@@ -42,7 +56,6 @@ export default function SquareSetupScreen() {
 
       const { data } = await supabase.auth.getUser();
       const userId = data.user?.id;
-
       if (!userId) {
         router.replace("/login");
         return;
@@ -63,74 +76,69 @@ export default function SquareSetupScreen() {
   }, [restaurantId, router]);
 
   const handleConnectSquare = async () => {
-    if (!restaurantId) {
-      showAlert("Profile missing", "We could not find a restaurant for this account.");
-      return;
-    }
-
-    if (!merchantId.trim() || !accessToken.trim()) {
-      showAlert("Missing Information", "Please enter your Square merchant ID and access token.");
-      return;
-    }
-
+    if (!restaurantId) return;
     setLoading(true);
 
     try {
-      const result = await RestaurantsService.connectSquare(restaurantId, {
-        squareMerchantId: merchantId.trim(),
-        squareAccessToken: accessToken.trim(),
-      });
-
-      showAlert(
-        "Square Connected",
-        `Your Square catalog is ready. Imported ${result.upserted} menu item${result.upserted === 1 ? "" : "s"}.`
+      const authorizationUrl = await RestaurantsService.getSquareAuthorizationUrl(
+        restaurantId
       );
-      router.replace("/");
+
+      if (Platform.OS === "web") {
+        window.location.assign(authorizationUrl);
+      } else {
+        await Linking.openURL(authorizationUrl);
+        setLoading(false);
+      }
     } catch (err: any) {
-      console.error("Square connection failed:", err);
-      showAlert("Square Connection Failed", err.message ?? "Please check your Square details.");
-    } finally {
       setLoading(false);
+      showAlert(
+        "Could not open Square",
+        err.message ?? "Please try again in a moment."
+      );
     }
   };
 
   if (checkingProfile) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" />
+        <ActivityIndicator size="large" color="#111827" />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Connect Square</Text>
-      <Text style={styles.subtitle}>
-        Connect Square to import your catalog before continuing.
-      </Text>
+      <View style={styles.panel}>
+        <Text style={styles.eyebrow}>SQUARE SETUP</Text>
+        <Text style={styles.title}>Connect your Square account to continue</Text>
+        <Text style={styles.subtitle}>
+          You will be redirected to Square to sign in, review the requested
+          permissions, and approve access. Byte2Bite will then build your menu from
+          your Square catalog.
+        </Text>
 
-      <TextInput
-        placeholder="Square Merchant ID"
-        style={styles.input}
-        value={merchantId}
-        onChangeText={setMerchantId}
-        autoCapitalize="none"
-      />
+        <Pressable
+          accessibilityRole="button"
+          disabled={loading}
+          onPress={handleConnectSquare}
+          style={({ pressed }) => [
+            styles.button,
+            pressed && styles.buttonPressed,
+            loading && styles.buttonDisabled,
+          ]}
+        >
+          {loading ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text style={styles.buttonText}>Connect Square</Text>
+          )}
+        </Pressable>
 
-      <TextInput
-        placeholder="Square Access Token"
-        style={styles.input}
-        value={accessToken}
-        onChangeText={setAccessToken}
-        autoCapitalize="none"
-        secureTextEntry
-      />
-
-      {loading ? (
-        <ActivityIndicator size="large" color="#007AFF" />
-      ) : (
-        <Button title="Connect Square" onPress={handleConnectSquare} />
-      )}
+        <Text style={styles.note}>
+          Byte2Bite requests read access to your catalog, orders, and merchant profile.
+        </Text>
+      </View>
     </View>
   );
 }
@@ -140,26 +148,65 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#fff",
-    padding: 20,
+    backgroundColor: "#f8fafc",
+    padding: 24,
+  },
+  panel: {
+    width: "100%",
+    maxWidth: 560,
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    paddingHorizontal: 36,
+    paddingVertical: 40,
+  },
+  eyebrow: {
+    color: "#2563eb",
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 12,
   },
   title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 8,
+    color: "#111827",
+    fontSize: 28,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 14,
   },
   subtitle: {
-    color: "#555",
-    marginBottom: 20,
+    color: "#4b5563",
+    fontSize: 16,
+    lineHeight: 24,
     textAlign: "center",
+    marginBottom: 28,
   },
-  input: {
-    width: "100%",
-    height: 50,
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    marginBottom: 15,
+  button: {
+    minWidth: 190,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#111827",
+    borderRadius: 6,
+    paddingHorizontal: 24,
+  },
+  buttonPressed: {
+    backgroundColor: "#374151",
+  },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+  buttonText: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  note: {
+    color: "#6b7280",
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    marginTop: 18,
   },
 });
