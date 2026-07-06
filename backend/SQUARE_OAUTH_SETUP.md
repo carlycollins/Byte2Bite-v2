@@ -10,6 +10,7 @@ Square__ApplicationId=<application id>
 Square__ApplicationSecret=<application secret>
 Square__OAuthRedirectUri=https://your-api.example.com/api/square/oauth/callback
 Square__FrontendReturnUrl=https://your-app.example.com/square-setup
+Square__OrderSyncRestaurantId=<restaurant id to sync orders for>
 ```
 
 For local development, the non-secret URLs are already present in
@@ -19,7 +20,12 @@ For local development, the non-secret URLs are already present in
 ```bash
 dotnet user-secrets set "Square:ApplicationId" "<sandbox application id>"
 dotnet user-secrets set "Square:ApplicationSecret" "<sandbox application secret>"
+dotnet user-secrets set "Square:OrderSyncRestaurantId" "<restaurant id>"
 ```
+
+Leave `Square:OrderSyncRestaurantId` unset to disable the background order sync.
+This is useful during local testing after clearing database tables because old
+restaurant IDs may no longer exist.
 
 The redirect URI configured in Square must exactly match `Square:OAuthRedirectUri`.
 Square requires HTTPS callbacks, so local testing may require a trusted local
