@@ -1,6 +1,7 @@
 import { View, Text, Pressable, Platform } from "react-native";
 import { Slot, Link, Href, usePathname, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { User } from "@supabase/supabase-js";
 import { supabase } from "../services/supabaseClient";
 import { RestaurantsService } from "../services/RestaurantService";
 import { UserProfilesService } from "../services/UserProfileService";
@@ -8,7 +9,7 @@ import { UserProfilesService } from "../services/UserProfileService";
 type SquareSetupStatus =
   | { status: "connected" }
   | { status: "needs-square"; restaurantId: number }
-  | { status: "missing-profile" };
+  | { status: "setup-failed" };
 
 function getRecoverySearchFromLocation(): string | null {
   if (typeof window === "undefined") return null;
@@ -53,20 +54,22 @@ function isRecoveryLink(): boolean {
   return false;
 }
 
+function getCurrentRestaurantIdParam(): number | null {
+  if (typeof window === "undefined") return null;
+  const value = new URLSearchParams(window.location.search).get("restaurantId");
+  const parsed = value ? Number(value) : null;
+  return parsed && parsed > 0 ? parsed : null;
+}
+
 export default function RootLayout() {
   const pathname = usePathname();
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [emailPending, setEmailPending] = useState<string | null>(null);
 
-  const getSquareSetupRestaurantId = async (
-    supabaseUserId: string
-  ): Promise<SquareSetupStatus> => {
+  const getSquareSetupStatus = async (user: User): Promise<SquareSetupStatus> => {
     try {
-      const profile = await UserProfilesService.getUserProfileBySupabaseId(
-        supabaseUserId
-      );
-      if (!profile?.restaurant_Id) return { status: "missing-profile" };
+      const profile = await UserProfilesService.ensureUserProfileForUser(user);
 
       const restaurant = await RestaurantsService.getRestaurant(profile.restaurant_Id);
       return RestaurantsService.hasSquareConnection(restaurant)
@@ -74,18 +77,9 @@ export default function RootLayout() {
         : { status: "needs-square", restaurantId: profile.restaurant_Id };
     } catch (err) {
       console.error("Unable to check Square setup status:", err);
-      return { status: "missing-profile" };
+      return { status: "setup-failed" };
     }
   };
-
-  const resetMissingAppProfile = useCallback(async () => {
-    setIsAuthenticated(false);
-    setEmailPending(null);
-    await supabase.auth.signOut({ scope: "local" });
-    if (pathname !== "/login") {
-      router.replace("/login");
-    }
-  }, [pathname, router]);
 
   useEffect(() => {
     if (Platform.OS === "web") {
@@ -122,15 +116,12 @@ export default function RootLayout() {
             });
           }
         } else if (user) {
-          const squareSetupStatus = await getSquareSetupRestaurantId(user.id);
-          if (squareSetupStatus.status === "missing-profile") {
-            await resetMissingAppProfile();
-            return;
-          }
+          const squareSetupStatus = await getSquareSetupStatus(user);
 
           if (
             squareSetupStatus.status === "needs-square" &&
-            pathname !== "/square-setup"
+            (pathname !== "/square-setup" ||
+              getCurrentRestaurantIdParam() !== squareSetupStatus.restaurantId)
           ) {
             router.replace({
               pathname: "/square-setup",
@@ -144,6 +135,11 @@ export default function RootLayout() {
               pathname === "/square-setup")
           ) {
             router.replace("/");
+          } else if (
+            squareSetupStatus.status === "setup-failed" &&
+            pathname !== "/login"
+          ) {
+            router.replace("/login");
           }
           setEmailPending(null);
         } else {
@@ -190,21 +186,19 @@ export default function RootLayout() {
             });
           } else {
             const squareSetupRestaurantId = user
-              ? await getSquareSetupRestaurantId(user.id)
+              ? await getSquareSetupStatus(user)
               : { status: "connected" as const };
             setEmailPending(null);
-            if (squareSetupRestaurantId.status === "missing-profile") {
-              await resetMissingAppProfile();
-              return;
-            }
 
             if (squareSetupRestaurantId.status === "needs-square") {
               router.replace({
                 pathname: "/square-setup",
                 params: { restaurantId: squareSetupRestaurantId.restaurantId },
               });
-            } else {
+            } else if (squareSetupRestaurantId.status === "connected") {
               router.replace("/");
+            } else if (pathname !== "/login") {
+              router.replace("/login");
             }
           }
         }
@@ -216,7 +210,7 @@ export default function RootLayout() {
     );
 
     return () => listener.subscription.unsubscribe();
-  }, [pathname, resetMissingAppProfile, router]);
+  }, [pathname, router]);
 
   const showSidebar =
     pathname !== "/login" &&

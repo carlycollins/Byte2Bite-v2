@@ -48,28 +48,43 @@ export default function SquareSetupScreen() {
   }, [params.message, params.square]);
 
   useEffect(() => {
+    if (restaurantIdParam && restaurantIdParam > 0) {
+      setRestaurantId(restaurantIdParam);
+    }
+  }, [restaurantIdParam]);
+
+  useEffect(() => {
     const loadRestaurantId = async () => {
-      if (restaurantId) {
+      try {
+        if (restaurantId) {
+          setCheckingProfile(false);
+          return;
+        }
+
+        const { data } = await supabase.auth.getUser();
+        const user = data.user;
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
+
+        const profile = await UserProfilesService.ensureUserProfileForUser(user);
+        if (!profile?.restaurant_Id) {
+          showAlert("Profile missing", "We could not find a restaurant for this account.");
+          router.replace("/login");
+          return;
+        }
+
+        setRestaurantId(profile.restaurant_Id);
         setCheckingProfile(false);
-        return;
-      }
-
-      const { data } = await supabase.auth.getUser();
-      const userId = data.user?.id;
-      if (!userId) {
+      } catch (err) {
+        console.error("Unable to prepare Square setup:", err);
+        showAlert(
+          "Account setup failed",
+          "We could not finish preparing this account. Please try logging in again."
+        );
         router.replace("/login");
-        return;
       }
-
-      const profile = await UserProfilesService.getUserProfileBySupabaseId(userId);
-      if (!profile?.restaurant_Id) {
-        showAlert("Profile missing", "We could not find a restaurant for this account.");
-        router.replace("/login");
-        return;
-      }
-
-      setRestaurantId(profile.restaurant_Id);
-      setCheckingProfile(false);
     };
 
     loadRestaurantId();

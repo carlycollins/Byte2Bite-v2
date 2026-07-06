@@ -1,4 +1,5 @@
 import { User } from "@supabase/supabase-js";
+import { RestaurantsService } from "./RestaurantService";
 
 // services/UserProfilesService.ts 
 export interface UserProfile {
@@ -59,6 +60,38 @@ async function addUserProfile(userDto: UserProfile): Promise<UserProfile> {
   return res.json();
 }
 
+async function ensureUserProfileForUser(user: User): Promise<UserProfile> {
+  const existingProfile = await getUserProfileBySupabaseId(user.id);
+  if (existingProfile?.restaurant_Id) return existingProfile;
+
+  const displayName =
+    typeof user.user_metadata?.display_name === "string"
+      ? user.user_metadata.display_name.trim()
+      : "";
+  const email = user.email ?? "";
+  const restaurantName = `${displayName || email || "New Account"}'s Restaurant`;
+
+  const savedRestaurant = await RestaurantsService.addRestaurant({
+    id: 0,
+    name: restaurantName,
+    zip: "",
+    zipCode: "",
+    squareId: "",
+    squareConnected: false,
+  });
+
+  const profile: UserProfile = {
+    id: 0,
+    supabaseId: user.id,
+    fullName: displayName,
+    createdOn: new Date().toISOString(),
+    email,
+    restaurant_Id: savedRestaurant.id,
+  };
+
+  return addUserProfile(profile);
+}
+
 
 async function updateUserProfile(
   id: number,
@@ -84,6 +117,7 @@ export const UserProfilesService = {
   getAllUsers,
   getUserProfile,
   getUserProfileBySupabaseId,
+  ensureUserProfileForUser,
   addUserProfile,
   updateUserProfile,
   deleteUserProfile,
