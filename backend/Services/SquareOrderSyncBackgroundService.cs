@@ -16,13 +16,17 @@ namespace backend.Services
     {
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<SquareOrderSyncBackgroundService> _logger;
+        private readonly IConfiguration _configuration;
         private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
-        private const int RestaurantId = 1; // TODO: make configurable
 
-        public SquareOrderSyncBackgroundService(IServiceScopeFactory scopeFactory, ILogger<SquareOrderSyncBackgroundService> logger)
+        public SquareOrderSyncBackgroundService(
+            IServiceScopeFactory scopeFactory,
+            ILogger<SquareOrderSyncBackgroundService> logger,
+            IConfiguration configuration)
         {
             _scopeFactory = scopeFactory;
             _logger = logger;
+            _configuration = configuration;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -61,18 +65,37 @@ namespace backend.Services
 
         private async Task SyncOnce(CancellationToken cancellationToken)
         {
+            var restaurantId = GetConfiguredRestaurantId();
+            if (restaurantId is null)
+            {
+                _logger.LogDebug("Square order sync is disabled because Square:OrderSyncRestaurantId is not configured.");
+                return;
+            }
+
             await using var scope = _scopeFactory.CreateAsyncScope();
             var orderSync = scope.ServiceProvider.GetRequiredService<ISquareOrderSyncService>();
             var supabase = scope.ServiceProvider.GetRequiredService<ISupabaseService>();
 
-            var lastSync = await supabase.GetLastSquareOrderSyncAsync(RestaurantId);
+            var restaurant = await supabase.GetRestaurantByIdAsync(restaurantId.Value);
+            if (restaurant == null)
+            {
+                _logger.LogWarning(
+                    "Square order sync skipped because configured restaurant {RestaurantId} does not exist.",
+                    restaurantId.Value);
+                return;
+            }
+
+            var lastSync = await supabase.GetLastSquareOrderSyncAsync(restaurantId.Value);
 
             // If no prior sync, initialize the marker to "now" and skip ingesting historical orders.
             if (lastSync is null)
             {
                 var now = DateTimeOffset.UtcNow;
-                await supabase.SetLastSquareOrderSyncAsync(RestaurantId, now);
-                _logger.LogInformation("Initialized Square order sync marker at {Now}; skipping historical import.", now);
+                await supabase.SetLastSquareOrderSyncAsync(restaurantId.Value, now);
+                _logger.LogInformation(
+                    "Initialized Square order sync marker for restaurant {RestaurantId} at {Now}; skipping historical import.",
+                    restaurantId.Value,
+                    now);
                 return;
             }
 
@@ -82,7 +105,7 @@ namespace backend.Services
             {
                 try
                 {
-                    var mapped = await MapOrderAsync(order, supabase, cancellationToken);
+                    var mapped = await MapOrderAsync(order, supabase, restaurantId.Value, cancellationToken);
                     var orderId = await supabase.UpsertOrderAsync(mapped.order, mapped.lineItems);
                     await supabase.DeductInventoryForOrderAsync(mapped.lineItems);
                     _logger.LogInformation("Upserted Square order {SquareOrderId} -> local {OrderId}, {LineCount} lines.", mapped.order.Square_Order_Id, orderId, mapped.lineItems.Count);
@@ -94,16 +117,25 @@ namespace backend.Services
             }
 
             // Update last successful sync
-            await supabase.SetLastSquareOrderSyncAsync(RestaurantId, DateTimeOffset.UtcNow);
+            await supabase.SetLastSquareOrderSyncAsync(restaurantId.Value, DateTimeOffset.UtcNow);
 
-            _logger.LogInformation("Square order sync finished, {Count} order(s) processed.", orders.Count);
+            _logger.LogInformation(
+                "Square order sync finished for restaurant {RestaurantId}, {Count} order(s) processed.",
+                restaurantId.Value,
+                orders.Count);
         }
 
-        private static async Task<(OrderRecord order, List<OrderLineItemRecord> lineItems)> MapOrderAsync(Order order, ISupabaseService supabase, CancellationToken cancellationToken)
+        private int? GetConfiguredRestaurantId()
+        {
+            var configured = _configuration.GetValue<int?>("Square:OrderSyncRestaurantId");
+            return configured > 0 ? configured : null;
+        }
+
+        private static async Task<(OrderRecord order, List<OrderLineItemRecord> lineItems)> MapOrderAsync(Order order, ISupabaseService supabase, int restaurantId, CancellationToken cancellationToken)
         {
             var orderRecord = new OrderRecord
             {
-                Restaurant_Id = RestaurantId,
+                Restaurant_Id = restaurantId,
                 Square_Order_Id = order.Id ?? string.Empty,
                 State = order.State?.Value ?? string.Empty,
                 Total_Money_Cents = order.TotalMoney?.Amount ?? 0,
@@ -125,7 +157,7 @@ namespace backend.Services
                     int? itemId = null;
                     if (!string.IsNullOrWhiteSpace(li.CatalogObjectId))
                     {
-                        var item = await supabase.GetItemBySquareVariationIdAsync(li.CatalogObjectId, RestaurantId);
+                        var item = await supabase.GetItemBySquareVariationIdAsync(li.CatalogObjectId, restaurantId);
                         itemId = item?.Id;
                     }
 
