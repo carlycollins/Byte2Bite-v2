@@ -1,9 +1,14 @@
 import { View, Text, Pressable, Platform } from "react-native";
 import { Slot, Link, Href, usePathname, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../services/supabaseClient";
 import { RestaurantsService } from "../services/RestaurantService";
 import { UserProfilesService } from "../services/UserProfileService";
+
+type SquareSetupStatus =
+  | { status: "connected" }
+  | { status: "needs-square"; restaurantId: number }
+  | { status: "missing-profile" };
 
 function getRecoverySearchFromLocation(): string | null {
   if (typeof window === "undefined") return null;
@@ -56,22 +61,31 @@ export default function RootLayout() {
 
   const getSquareSetupRestaurantId = async (
     supabaseUserId: string
-  ): Promise<number | null> => {
+  ): Promise<SquareSetupStatus> => {
     try {
       const profile = await UserProfilesService.getUserProfileBySupabaseId(
         supabaseUserId
       );
-      if (!profile?.restaurant_Id) return -1;
+      if (!profile?.restaurant_Id) return { status: "missing-profile" };
 
       const restaurant = await RestaurantsService.getRestaurant(profile.restaurant_Id);
       return RestaurantsService.hasSquareConnection(restaurant)
-        ? null
-        : profile.restaurant_Id;
+        ? { status: "connected" }
+        : { status: "needs-square", restaurantId: profile.restaurant_Id };
     } catch (err) {
       console.error("Unable to check Square setup status:", err);
-      return -1;
+      return { status: "missing-profile" };
     }
   };
+
+  const resetMissingAppProfile = useCallback(async () => {
+    setIsAuthenticated(false);
+    setEmailPending(null);
+    await supabase.auth.signOut({ scope: "local" });
+    if (pathname !== "/login") {
+      router.replace("/login");
+    }
+  }, [pathname, router]);
 
   useEffect(() => {
     if (Platform.OS === "web") {
@@ -108,19 +122,22 @@ export default function RootLayout() {
             });
           }
         } else if (user) {
-          const squareSetupRestaurantId = await getSquareSetupRestaurantId(
-            user.id
-          );
-          if (squareSetupRestaurantId && pathname !== "/square-setup") {
+          const squareSetupStatus = await getSquareSetupRestaurantId(user.id);
+          if (squareSetupStatus.status === "missing-profile") {
+            await resetMissingAppProfile();
+            return;
+          }
+
+          if (
+            squareSetupStatus.status === "needs-square" &&
+            pathname !== "/square-setup"
+          ) {
             router.replace({
               pathname: "/square-setup",
-              params:
-                squareSetupRestaurantId > 0
-                  ? { restaurantId: squareSetupRestaurantId }
-                  : undefined,
+              params: { restaurantId: squareSetupStatus.restaurantId },
             });
           } else if (
-            !squareSetupRestaurantId &&
+            squareSetupStatus.status === "connected" &&
             (pathname === "/login" ||
               pathname === "/signup" ||
               pathname === "/verifyemail" ||
@@ -174,15 +191,17 @@ export default function RootLayout() {
           } else {
             const squareSetupRestaurantId = user
               ? await getSquareSetupRestaurantId(user.id)
-              : null;
+              : { status: "connected" as const };
             setEmailPending(null);
-            if (squareSetupRestaurantId) {
+            if (squareSetupRestaurantId.status === "missing-profile") {
+              await resetMissingAppProfile();
+              return;
+            }
+
+            if (squareSetupRestaurantId.status === "needs-square") {
               router.replace({
                 pathname: "/square-setup",
-                params:
-                  squareSetupRestaurantId > 0
-                    ? { restaurantId: squareSetupRestaurantId }
-                    : undefined,
+                params: { restaurantId: squareSetupRestaurantId.restaurantId },
               });
             } else {
               router.replace("/");
@@ -197,7 +216,7 @@ export default function RootLayout() {
     );
 
     return () => listener.subscription.unsubscribe();
-  }, [pathname, router]);
+  }, [pathname, resetMissingAppProfile, router]);
 
   const showSidebar =
     pathname !== "/login" &&
