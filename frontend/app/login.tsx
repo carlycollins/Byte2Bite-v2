@@ -32,12 +32,8 @@ export default function LoginScreen() {
 
   useEffect(() => {
     const checkSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        router.replace("/");
-      } else {
-        setCheckingSession(false);
-      }
+      await supabase.auth.getSession();
+      setCheckingSession(false);
     };
     checkSession();
   }, []);
