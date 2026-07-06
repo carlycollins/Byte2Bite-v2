@@ -11,8 +11,7 @@ import {
 } from "react-native";
 import { supabase } from "../services/supabaseClient";
 import { useRouter } from "expo-router";
-import { RestaurantsService } from "@/services/RestaurantService";
-import { UserProfilesService, UserProfile } from '../services/UserProfileService';
+import { UserProfilesService } from '../services/UserProfileService';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -79,48 +78,22 @@ export default function SignupScreen() {
       }
 
       if (data.user) {
-        const fullName = `${firstName} ${lastName}`.trim();
-        const savedRestaurant = await RestaurantsService.addRestaurant({
-          id: 0,
-          name: `${fullName || email}'s Restaurant`,
-          zip: "",
-          zipCode: "",
-          squareId: "",
-          squareConnected: false,
-        });
-
-        const newProfile: UserProfile = {
-          id: 0, 
-          supabaseId: data.user.id,                      
-          fullName,
-          createdOn: new Date().toISOString(),
-          email: data.user.email ?? email,
-          restaurant_Id: savedRestaurant.id,
-        };
-        const savedProfile = await UserProfilesService.addUserProfile(newProfile);
-
-        if (data.session) {
-          showAlert("Success", "Account created! Connect Square to continue.");
+        if (!data.session) {
           router.replace({
-            pathname: "/square-setup",
-            params: { restaurantId: savedProfile.restaurant_Id },
+            pathname: "/verifyemail",
+            params: { email: data.user.email ?? email },
           });
           return;
         }
-      }
 
-      // ✅ If a user was created, redirect to verifyemail immediately
-      if (data.user && !data.session) {
-        router.replace({
-          pathname: "/verifyemail",
-          params: { email: data.user.email ?? email },
-        });
-        return;
-      }
-
-      if (data.session) {
+        const savedProfile = await UserProfilesService.ensureUserProfileForUser(
+          data.user
+        );
         showAlert("Success", "Account created! Connect Square to continue.");
-        router.replace("/square-setup");
+        router.replace({
+          pathname: "/square-setup",
+          params: { restaurantId: savedProfile.restaurant_Id },
+        });
       }
     } catch (err: any) {
       console.error("Unexpected signup error:", err);
