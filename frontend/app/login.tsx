@@ -10,7 +10,10 @@ import {
   Alert
 } from "react-native";
 import { useRouter } from "expo-router";
-import { supabase } from "../services/supabaseClient";
+import {
+  checkSupabaseAuthReachable,
+  supabase,
+} from "../services/supabaseClient";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -49,15 +52,33 @@ export default function LoginScreen() {
       });
 
       if (error) {
-        setMessage(`❌ Login failed: ${error.message}`);
+        if (error.message === "Load failed") {
+          const authReachable = await checkSupabaseAuthReachable();
+          setMessage(
+            authReachable
+              ? "Login failed: the browser could reach Supabase, but the sign-in request was blocked or interrupted. Try a hard refresh or a different browser window."
+              : "Login failed: this browser could not reach Supabase Auth. Check your network connection and reload the app."
+          );
+        } else {
+          setMessage(`Login failed: ${error.message}`);
+        }
       } else if (data.session) {
-        setMessage("✅ Login successful! Redirecting...");
+        setMessage("Login successful! Redirecting...");
         setTimeout(() => router.replace("/"), 800);
       } else {
-        setMessage("⚠️ No active session found. Please check your email.");
+        setMessage("No active session found. Please check your email.");
       }
     } catch (err: any) {
-      setMessage(`Unexpected error: ${err.message}`);
+      if (err?.message === "Load failed") {
+        const authReachable = await checkSupabaseAuthReachable();
+        setMessage(
+          authReachable
+            ? "Login failed: the browser could reach Supabase, but the sign-in request was blocked or interrupted. Try a hard refresh or a different browser window."
+            : "Login failed: this browser could not reach Supabase Auth. Check your network connection and reload the app."
+        );
+      } else {
+        setMessage(`Unexpected error: ${err?.message ?? "Please try again."}`);
+      }
     } finally {
       setLoading(false);
     }
