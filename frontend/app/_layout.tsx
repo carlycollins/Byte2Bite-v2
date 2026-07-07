@@ -1,6 +1,6 @@
 import { View, Text, Pressable, Platform } from "react-native";
 import { Slot, Link, Href, usePathname, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { User } from "@supabase/supabase-js";
 import { supabase } from "../services/supabaseClient";
 import { RestaurantsService } from "../services/RestaurantService";
@@ -66,8 +66,10 @@ export default function RootLayout() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [emailPending, setEmailPending] = useState<string | null>(null);
+  const [squareSetupStatus, setSquareSetupStatus] =
+    useState<SquareSetupStatus | null>(null);
 
-  const getSquareSetupStatus = async (user: User): Promise<SquareSetupStatus> => {
+  const getSquareSetupStatus = useCallback(async (user: User): Promise<SquareSetupStatus> => {
     try {
       const profile = await UserProfilesService.ensureUserProfileForUser(user);
 
@@ -79,6 +81,30 @@ export default function RootLayout() {
       console.error("Unable to check Square setup status:", err);
       return { status: "setup-failed" };
     }
+  }, []);
+
+  const authRoute =
+    pathname === "/login" ||
+    pathname === "/signup" ||
+    pathname === "/verifyemail" ||
+    pathname === "/reset-password" ||
+    pathname === "/square-setup";
+  const squarePromptVisible =
+    isAuthenticated === true &&
+    !authRoute &&
+    squareSetupStatus !== null &&
+    squareSetupStatus.status !== "connected";
+
+  const goToSquareSetup = () => {
+    if (squareSetupStatus?.status === "needs-square") {
+      router.replace({
+        pathname: "/square-setup",
+        params: { restaurantId: squareSetupStatus.restaurantId },
+      });
+      return;
+    }
+
+    router.replace("/square-setup");
   };
 
   useEffect(() => {
@@ -116,37 +142,37 @@ export default function RootLayout() {
             });
           }
         } else if (user) {
-          const squareSetupStatus = await getSquareSetupStatus(user);
+          const nextSquareSetupStatus = await getSquareSetupStatus(user);
+          setSquareSetupStatus(nextSquareSetupStatus);
 
           if (
-            squareSetupStatus.status === "needs-square" &&
-            (pathname !== "/square-setup" ||
-              getCurrentRestaurantIdParam() !== squareSetupStatus.restaurantId)
+            nextSquareSetupStatus.status === "needs-square" &&
+            pathname === "/square-setup" &&
+            getCurrentRestaurantIdParam() !== nextSquareSetupStatus.restaurantId
           ) {
             router.replace({
               pathname: "/square-setup",
-              params: { restaurantId: squareSetupStatus.restaurantId },
+              params: { restaurantId: nextSquareSetupStatus.restaurantId },
             });
           } else if (
-            squareSetupStatus.status === "connected" &&
+            nextSquareSetupStatus.status === "connected" &&
             (pathname === "/login" ||
               pathname === "/signup" ||
               pathname === "/verifyemail" ||
               pathname === "/square-setup")
           ) {
             router.replace("/");
-          } else if (
-            squareSetupStatus.status === "setup-failed" &&
-            pathname !== "/login"
-          ) {
-            router.replace("/login");
+          } else if (pathname === "/login" || pathname === "/signup") {
+            router.replace("/");
           }
           setEmailPending(null);
         } else {
           setEmailPending(null);
+          setSquareSetupStatus(null);
           router.replace("/login");
         }
       } else {
+        setSquareSetupStatus(null);
         if (
           pathname !== "/login" &&
           pathname !== "/signup" &&
@@ -164,6 +190,7 @@ export default function RootLayout() {
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setIsAuthenticated(!!session);
+        if (!session) setSquareSetupStatus(null);
 
         if (_event === "SIGNED_IN") {
           if (Platform.OS === "web" && isRecoveryLink()) {
@@ -185,32 +212,29 @@ export default function RootLayout() {
               params: { email: user.email },
             });
           } else {
-            const squareSetupRestaurantId = user
+            const nextSquareSetupStatus = user
               ? await getSquareSetupStatus(user)
               : { status: "connected" as const };
             setEmailPending(null);
+            setSquareSetupStatus(nextSquareSetupStatus);
 
-            if (squareSetupRestaurantId.status === "needs-square") {
-              router.replace({
-                pathname: "/square-setup",
-                params: { restaurantId: squareSetupRestaurantId.restaurantId },
-              });
-            } else if (squareSetupRestaurantId.status === "connected") {
+            if (nextSquareSetupStatus.status === "connected") {
               router.replace("/");
-            } else if (pathname !== "/login") {
-              router.replace("/login");
+            } else if (pathname === "/login" || pathname === "/signup") {
+              router.replace("/");
             }
           }
         }
         if (_event === "SIGNED_OUT") {
           setEmailPending(null);
+          setSquareSetupStatus(null);
           router.replace("/login");
         }
       }
     );
 
     return () => listener.subscription.unsubscribe();
-  }, [pathname, router]);
+  }, [getSquareSetupStatus, pathname, router]);
 
   const showSidebar =
     pathname !== "/login" &&
@@ -304,6 +328,107 @@ export default function RootLayout() {
         )}
         <View style={{ flex: 1, minHeight: 0, overflow: "scroll" }}>
           <Slot />
+          {squarePromptVisible && (
+            <View
+              style={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                bottom: 0,
+                left: 0,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(248, 250, 252, 0.96)",
+                padding: 24,
+              }}
+            >
+              <View
+                style={{
+                  width: "100%",
+                  maxWidth: 560,
+                  alignItems: "center",
+                  backgroundColor: "white",
+                  borderWidth: 1,
+                  borderColor: "#d1d5db",
+                  borderRadius: 8,
+                  paddingHorizontal: 36,
+                  paddingVertical: 40,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#2563eb",
+                    fontSize: 12,
+                    fontWeight: "700",
+                    marginBottom: 12,
+                  }}
+                >
+                  SQUARE SETUP
+                </Text>
+                <Text
+                  style={{
+                    color: "#111827",
+                    fontSize: 28,
+                    fontWeight: "700",
+                    textAlign: "center",
+                    marginBottom: 14,
+                  }}
+                >
+                  Connect your Square account to continue
+                </Text>
+                <Text
+                  style={{
+                    color: "#4b5563",
+                    fontSize: 16,
+                    lineHeight: 24,
+                    textAlign: "center",
+                    marginBottom: 28,
+                  }}
+                >
+                  Byte2Bite needs your Square catalog before this workspace is
+                  ready. You will be redirected to Square to review and grant
+                  access.
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={goToSquareSetup}
+                  style={{
+                    minWidth: 190,
+                    minHeight: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "#111827",
+                    borderRadius: 6,
+                    paddingHorizontal: 24,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "white",
+                      fontSize: 16,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Connect Square
+                  </Text>
+                </Pressable>
+                {squareSetupStatus.status === "setup-failed" && (
+                  <Text
+                    style={{
+                      color: "#b45309",
+                      fontSize: 13,
+                      lineHeight: 19,
+                      textAlign: "center",
+                      marginTop: 18,
+                    }}
+                  >
+                    We could not finish preparing this account yet. Check that
+                    the backend is running, then try again.
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
         </View>
       </View>
     </View>

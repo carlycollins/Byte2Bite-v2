@@ -32,6 +32,7 @@ export default function SquareSetupScreen() {
   );
   const [loading, setLoading] = useState(false);
   const [checkingProfile, setCheckingProfile] = useState(true);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const showAlert = (title: string, message: string) => {
     if (Platform.OS === "web") {
@@ -70,20 +71,20 @@ export default function SquareSetupScreen() {
 
         const profile = await UserProfilesService.ensureUserProfileForUser(user);
         if (!profile?.restaurant_Id) {
-          showAlert("Profile missing", "We could not find a restaurant for this account.");
-          router.replace("/login");
+          setSetupError("We could not find a restaurant for this account.");
+          setCheckingProfile(false);
           return;
         }
 
         setRestaurantId(profile.restaurant_Id);
+        setSetupError(null);
         setCheckingProfile(false);
       } catch (err) {
         console.error("Unable to prepare Square setup:", err);
-        showAlert(
-          "Account setup failed",
-          "We could not finish preparing this account. Please try logging in again."
+        setSetupError(
+          "We could not finish preparing this account. Check that the backend is running, then try again."
         );
-        router.replace("/login");
+        setCheckingProfile(false);
       }
     };
 
@@ -135,12 +136,12 @@ export default function SquareSetupScreen() {
 
         <Pressable
           accessibilityRole="button"
-          disabled={loading}
+          disabled={loading || !restaurantId}
           onPress={handleConnectSquare}
           style={({ pressed }) => [
             styles.button,
             pressed && styles.buttonPressed,
-            loading && styles.buttonDisabled,
+            (loading || !restaurantId) && styles.buttonDisabled,
           ]}
         >
           {loading ? (
@@ -151,7 +152,8 @@ export default function SquareSetupScreen() {
         </Pressable>
 
         <Text style={styles.note}>
-          Byte2Bite requests read access to your catalog, orders, and merchant profile.
+          {setupError ??
+            "Byte2Bite requests read access to your catalog, orders, and merchant profile."}
         </Text>
       </View>
     </View>
