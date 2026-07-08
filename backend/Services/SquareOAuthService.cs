@@ -27,10 +27,10 @@ namespace backend.Services
 
         public string FrontendReturnUrl => RequiredSetting("Square:FrontendReturnUrl");
 
-        public string CreateAuthorizationUrl(int restaurantId, Guid userId)
+        public string CreateAuthorizationUrl(Guid userId)
         {
             var state = _stateProtector.Protect(
-                JsonSerializer.Serialize(new OAuthState(restaurantId, userId), JsonOptions),
+                JsonSerializer.Serialize(new OAuthState(userId), JsonOptions),
                 TimeSpan.FromMinutes(10));
 
             var query = new Dictionary<string, string?>
@@ -44,12 +44,12 @@ namespace backend.Services
             return QueryHelpers.AddQueryString($"{OAuthBaseUrl}/authorize", query);
         }
 
-        public (int RestaurantId, Guid UserId) ReadState(string state)
+        public Guid ReadState(string state)
         {
             var json = _stateProtector.Unprotect(state);
             var payload = JsonSerializer.Deserialize<OAuthState>(json, JsonOptions)
                 ?? throw new InvalidOperationException("The Square authorization state is invalid.");
-            return (payload.RestaurantId, payload.UserId);
+            return payload.UserId;
         }
 
         public async Task<SquareOAuthToken> ExchangeCodeAsync(
@@ -114,7 +114,7 @@ namespace backend.Services
                 : throw new InvalidOperationException($"{key} is missing.");
         }
 
-        private record OAuthState(int RestaurantId, Guid UserId);
+        private record OAuthState(Guid UserId);
 
         private sealed class ObtainTokenResponse
         {

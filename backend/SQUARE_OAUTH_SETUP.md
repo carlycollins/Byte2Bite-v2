@@ -1,6 +1,8 @@
 # Square OAuth setup
 
-1. Run `migrations/20260617_add_square_oauth_tokens.sql` in the Supabase SQL editor.
+1. Run the Square migrations in the Supabase SQL editor:
+   - `migrations/20260617_add_square_oauth_tokens.sql`
+   - `migrations/20260707_make_profile_restaurant_nullable.sql`
 2. In the Square Developer Console, open the application OAuth settings and register the exact backend callback URL.
 3. Configure the backend with environment variables or .NET user secrets:
 
@@ -34,3 +36,8 @@ certificate or an HTTPS tunnel.
 The application requests `ITEMS_READ`, `ORDERS_READ`, and
 `MERCHANT_PROFILE_READ`. Access and refresh tokens are only returned to and
 stored by the backend; restaurant API responses expose only connection status.
+
+User profiles are created before Square is connected and may have a null
+`restaurant_id`. The Square OAuth callback creates the restaurant row, stores the
+Square credentials there, links `profiles.restaurant_id`, and imports the Square
+catalog for that restaurant.

@@ -15,7 +15,6 @@ import { UserProfilesService } from "@/services/UserProfileService";
 import { supabase } from "@/services/supabaseClient";
 
 type SetupParams = {
-  restaurantId?: string;
   square?: string;
   message?: string;
   imported?: string;
@@ -24,12 +23,6 @@ type SetupParams = {
 export default function SquareSetupScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<SetupParams>();
-  const restaurantIdParam = params.restaurantId
-    ? Number(params.restaurantId)
-    : null;
-  const [restaurantId, setRestaurantId] = useState<number | null>(
-    restaurantIdParam && restaurantIdParam > 0 ? restaurantIdParam : null
-  );
   const [loading, setLoading] = useState(false);
   const [checkingProfile, setCheckingProfile] = useState(true);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -45,23 +38,14 @@ export default function SquareSetupScreen() {
   useEffect(() => {
     if (params.square === "error") {
       showAlert("Square connection failed", params.message ?? "Please try again.");
+    } else if (params.square === "connected") {
+      router.replace("/");
     }
-  }, [params.message, params.square]);
-
-  useEffect(() => {
-    if (restaurantIdParam && restaurantIdParam > 0) {
-      setRestaurantId(restaurantIdParam);
-    }
-  }, [restaurantIdParam]);
+  }, [params.message, params.square, router]);
 
   useEffect(() => {
     const loadRestaurantId = async () => {
       try {
-        if (restaurantId) {
-          setCheckingProfile(false);
-          return;
-        }
-
         const { data } = await supabase.auth.getUser();
         const user = data.user;
         if (!user) {
@@ -69,14 +53,7 @@ export default function SquareSetupScreen() {
           return;
         }
 
-        const profile = await UserProfilesService.ensureUserProfileForUser(user);
-        if (!profile?.restaurant_Id) {
-          setSetupError("We could not find a restaurant for this account.");
-          setCheckingProfile(false);
-          return;
-        }
-
-        setRestaurantId(profile.restaurant_Id);
+        await UserProfilesService.ensureUserProfileForUser(user);
         setSetupError(null);
         setCheckingProfile(false);
       } catch (err) {
@@ -89,16 +66,13 @@ export default function SquareSetupScreen() {
     };
 
     loadRestaurantId();
-  }, [restaurantId, router]);
+  }, [router]);
 
   const handleConnectSquare = async () => {
-    if (!restaurantId) return;
     setLoading(true);
 
     try {
-      const authorizationUrl = await RestaurantsService.getSquareAuthorizationUrl(
-        restaurantId
-      );
+      const authorizationUrl = await RestaurantsService.getSquareAuthorizationUrl();
 
       if (Platform.OS === "web") {
         window.location.assign(authorizationUrl);
@@ -136,12 +110,12 @@ export default function SquareSetupScreen() {
 
         <Pressable
           accessibilityRole="button"
-          disabled={loading || !restaurantId}
+          disabled={loading || !!setupError}
           onPress={handleConnectSquare}
           style={({ pressed }) => [
             styles.button,
             pressed && styles.buttonPressed,
-            (loading || !restaurantId) && styles.buttonDisabled,
+            (loading || !!setupError) && styles.buttonDisabled,
           ]}
         >
           {loading ? (

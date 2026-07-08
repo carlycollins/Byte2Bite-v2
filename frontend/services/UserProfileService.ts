@@ -1,5 +1,4 @@
 import { User } from "@supabase/supabase-js";
-import { RestaurantsService } from "./RestaurantService";
 
 // services/UserProfilesService.ts 
 export interface UserProfile {
@@ -8,7 +7,7 @@ export interface UserProfile {
   fullName: string;
   createdOn: string;         
   email: string;
-  restaurant_Id: number;  
+  restaurant_Id: number | null;
 }
 
 const API_URL = "http://localhost:5038/api/users";
@@ -62,23 +61,13 @@ async function addUserProfile(userDto: UserProfile): Promise<UserProfile> {
 
 async function ensureUserProfileForUser(user: User): Promise<UserProfile> {
   const existingProfile = await getUserProfileBySupabaseId(user.id);
-  if (existingProfile?.restaurant_Id) return existingProfile;
+  if (existingProfile) return existingProfile;
 
   const displayName =
     typeof user.user_metadata?.display_name === "string"
       ? user.user_metadata.display_name.trim()
       : "";
   const email = user.email ?? "";
-  const restaurantName = `${displayName || email || "New Account"}'s Restaurant`;
-
-  const savedRestaurant = await RestaurantsService.addRestaurant({
-    id: 0,
-    name: restaurantName,
-    zip: "",
-    zipCode: "",
-    squareId: "",
-    squareConnected: false,
-  });
 
   const profile: UserProfile = {
     id: 0,
@@ -86,7 +75,7 @@ async function ensureUserProfileForUser(user: User): Promise<UserProfile> {
     fullName: displayName,
     createdOn: new Date().toISOString(),
     email,
-    restaurant_Id: savedRestaurant.id,
+    restaurant_Id: null,
   };
 
   return addUserProfile(profile);

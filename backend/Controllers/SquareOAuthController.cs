@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using backend.Models;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -29,17 +30,14 @@ namespace backend.Controllers
 
         [Authorize]
         [HttpGet("authorize")]
-        public async Task<IActionResult> Authorize(int restaurantId)
+        public IActionResult Authorize()
         {
             var subject = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
             if (!Guid.TryParse(subject, out var userId)) return Unauthorized();
 
-            var profile = await _supabase.GetUserBySupabaseIdAsync(userId);
-            if (profile == null || profile.Restaurant_Id != restaurantId) return Forbid();
-
             return Ok(new
             {
-                authorizationUrl = _squareOAuth.CreateAuthorizationUrl(restaurantId, userId)
+                authorizationUrl = _squareOAuth.CreateAuthorizationUrl(userId)
             });
         }
 
@@ -63,34 +61,49 @@ namespace backend.Controllers
 
             try
             {
-                var (restaurantId, userId) = _squareOAuth.ReadState(state);
-                var profile = await _supabase.GetUserBySupabaseIdAsync(userId);
-                if (profile == null || profile.Restaurant_Id != restaurantId)
-                {
-                    return RedirectToFrontend("error", "This Square connection is no longer valid.");
-                }
-
-                var restaurant = await _supabase.GetRestaurantByIdAsync(restaurantId);
-                if (restaurant == null)
-                {
-                    return RedirectToFrontend("error", "The restaurant could not be found.");
-                }
+                var userId = _squareOAuth.ReadState(state);
+                var profile = await EnsureProfileAsync(userId);
 
                 var token = await _squareOAuth.ExchangeCodeAsync(code, cancellationToken);
+                var restaurant = profile.Restaurant_Id.HasValue
+                    ? await _supabase.GetRestaurantByIdAsync(profile.Restaurant_Id.Value)
+                    : null;
+
+                if (restaurant == null)
+                {
+                    restaurant = await _supabase.CreateRestaurantAsync(new Restaurant
+                    {
+                        Name = RestaurantName(profile, token.MerchantId),
+                        ZipCode = string.Empty,
+                        SquareId = token.MerchantId,
+                        SquareAccessToken = token.AccessToken,
+                        SquareRefreshToken = token.RefreshToken,
+                        SquareTokenExpiresAt = token.ExpiresAt
+                    }) ?? throw new InvalidOperationException("Failed to create the restaurant.");
+
+                    profile.Restaurant_Id = restaurant.Id;
+                    if (await _supabase.UpdateUserAsync(profile.Id, profile) == null)
+                    {
+                        throw new InvalidOperationException("Failed to link the profile to the restaurant.");
+                    }
+                }
+                else
+                {
+                    restaurant.SquareId = token.MerchantId;
+                    restaurant.SquareAccessToken = token.AccessToken;
+                    restaurant.SquareRefreshToken = token.RefreshToken;
+                    restaurant.SquareTokenExpiresAt = token.ExpiresAt;
+
+                    if (await _supabase.UpdateRestaurantAsync(restaurant.Id, restaurant) == null)
+                    {
+                        throw new InvalidOperationException("Failed to save the Square connection.");
+                    }
+                }
+
                 var imported = await _squareMenuSync.ImportMenuItemsAsync(
-                    restaurantId,
+                    restaurant.Id,
                     token.AccessToken,
                     cancellationToken);
-
-                restaurant.SquareId = token.MerchantId;
-                restaurant.SquareAccessToken = token.AccessToken;
-                restaurant.SquareRefreshToken = token.RefreshToken;
-                restaurant.SquareTokenExpiresAt = token.ExpiresAt;
-
-                if (await _supabase.UpdateRestaurantAsync(restaurantId, restaurant) == null)
-                {
-                    throw new InvalidOperationException("Failed to save the Square connection.");
-                }
 
                 return RedirectToFrontend("connected", null, imported);
             }
@@ -107,6 +120,36 @@ namespace backend.Controllers
             if (!string.IsNullOrWhiteSpace(message)) query["message"] = message;
             if (imported.HasValue) query["imported"] = imported.Value.ToString();
             return Redirect(QueryHelpers.AddQueryString(_squareOAuth.FrontendReturnUrl, query));
+        }
+
+        private async Task<UserProfile> EnsureProfileAsync(Guid userId)
+        {
+            var profile = await _supabase.GetUserBySupabaseIdAsync(userId);
+            if (profile != null) return profile;
+
+            var email = User.FindFirstValue(ClaimTypes.Email) ?? User.FindFirstValue("email");
+            return await _supabase.CreateUserAsync(new UserProfile
+            {
+                supabaseId = userId,
+                Email = email,
+                FullName = email,
+                CreatedOn = DateTime.UtcNow
+            }) ?? throw new InvalidOperationException("Failed to create the user profile.");
+        }
+
+        private static string RestaurantName(UserProfile profile, string merchantId)
+        {
+            if (!string.IsNullOrWhiteSpace(profile.FullName))
+            {
+                return $"{profile.FullName}'s Restaurant";
+            }
+
+            if (!string.IsNullOrWhiteSpace(profile.Email))
+            {
+                return $"{profile.Email}'s Restaurant";
+            }
+
+            return $"Square Merchant {merchantId}";
         }
     }
 }

@@ -8,7 +8,7 @@ import { UserProfilesService } from "../services/UserProfileService";
 
 type SquareSetupStatus =
   | { status: "connected" }
-  | { status: "needs-square"; restaurantId: number }
+  | { status: "needs-square" }
   | { status: "setup-failed" };
 
 function getRecoverySearchFromLocation(): string | null {
@@ -54,13 +54,6 @@ function isRecoveryLink(): boolean {
   return false;
 }
 
-function getCurrentRestaurantIdParam(): number | null {
-  if (typeof window === "undefined") return null;
-  const value = new URLSearchParams(window.location.search).get("restaurantId");
-  const parsed = value ? Number(value) : null;
-  return parsed && parsed > 0 ? parsed : null;
-}
-
 export default function RootLayout() {
   const pathname = usePathname();
   const router = useRouter();
@@ -72,11 +65,14 @@ export default function RootLayout() {
   const getSquareSetupStatus = useCallback(async (user: User): Promise<SquareSetupStatus> => {
     try {
       const profile = await UserProfilesService.ensureUserProfileForUser(user);
+      if (!profile.restaurant_Id) {
+        return { status: "needs-square" };
+      }
 
       const restaurant = await RestaurantsService.getRestaurant(profile.restaurant_Id);
       return RestaurantsService.hasSquareConnection(restaurant)
         ? { status: "connected" }
-        : { status: "needs-square", restaurantId: profile.restaurant_Id };
+        : { status: "needs-square" };
     } catch (err) {
       console.error("Unable to check Square setup status:", err);
       return { status: "setup-failed" };
@@ -96,14 +92,6 @@ export default function RootLayout() {
     squareSetupStatus.status !== "connected";
 
   const goToSquareSetup = () => {
-    if (squareSetupStatus?.status === "needs-square") {
-      router.replace({
-        pathname: "/square-setup",
-        params: { restaurantId: squareSetupStatus.restaurantId },
-      });
-      return;
-    }
-
     router.replace("/square-setup");
   };
 
@@ -146,15 +134,6 @@ export default function RootLayout() {
           setSquareSetupStatus(nextSquareSetupStatus);
 
           if (
-            nextSquareSetupStatus.status === "needs-square" &&
-            pathname === "/square-setup" &&
-            getCurrentRestaurantIdParam() !== nextSquareSetupStatus.restaurantId
-          ) {
-            router.replace({
-              pathname: "/square-setup",
-              params: { restaurantId: nextSquareSetupStatus.restaurantId },
-            });
-          } else if (
             nextSquareSetupStatus.status === "connected" &&
             (pathname === "/login" ||
               pathname === "/signup" ||
