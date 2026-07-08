@@ -20,8 +20,7 @@ namespace backend.Dtos
         [Required]
         public string? Email { get; set; }
 
-        [Required]
-        public int Restaurant_Id { get; set; }
+        public int? Restaurant_Id { get; set; }
 
     }
 }

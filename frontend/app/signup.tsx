@@ -86,14 +86,9 @@ export default function SignupScreen() {
           return;
         }
 
-        const savedProfile = await UserProfilesService.ensureUserProfileForUser(
-          data.user
-        );
+        await UserProfilesService.ensureUserProfileForUser(data.user);
         showAlert("Success", "Account created! Connect Square to continue.");
-        router.replace({
-          pathname: "/square-setup",
-          params: { restaurantId: savedProfile.restaurant_Id },
-        });
+        router.replace("/square-setup");
       }
     } catch (err: any) {
       console.error("Unexpected signup error:", err);

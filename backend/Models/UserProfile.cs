@@ -21,6 +21,6 @@ namespace backend.Models
         public string? Email { get; set; }
 
         [Column("restaurant_id")]
-        public int Restaurant_Id { get; set; }
+        public int? Restaurant_Id { get; set; }
     }
 }

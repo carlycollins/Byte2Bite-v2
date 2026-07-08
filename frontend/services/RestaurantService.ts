@@ -53,13 +53,13 @@ async function updateRestaurant(
   return res.json();
 }
 
-async function getSquareAuthorizationUrl(id: number): Promise<string> {
+async function getSquareAuthorizationUrl(): Promise<string> {
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session?.access_token) {
     throw new Error("Your session has expired. Please sign in again.");
   }
 
-  const res = await fetch(`${SQUARE_OAUTH_URL}/authorize?restaurantId=${id}`, {
+  const res = await fetch(`${SQUARE_OAUTH_URL}/authorize`, {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${data.session.access_token}`,
