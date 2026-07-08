@@ -3,6 +3,7 @@
 1. Run the Square migrations in the Supabase SQL editor:
    - `migrations/20260617_add_square_oauth_tokens.sql`
    - `migrations/20260707_add_missing_square_restaurant_columns.sql`
+   - `migrations/20260707_relax_legacy_square_merchant_token.sql`
    - `migrations/20260707_make_profile_restaurant_nullable.sql`
 2. In the Square Developer Console, open the application OAuth settings and register the exact backend callback URL.
 3. Configure the backend with environment variables or .NET user secrets:

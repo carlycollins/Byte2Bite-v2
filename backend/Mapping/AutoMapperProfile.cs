@@ -21,6 +21,7 @@ namespace backend.Mapping
                     !string.IsNullOrWhiteSpace(src.SquareAccessToken)));
             CreateMap<RestaurantDto, Restaurant>()
                 .ForMember(dest => dest.SquareAccessToken, opt => opt.Ignore())
+                .ForMember(dest => dest.SquareMerchantToken, opt => opt.Ignore())
                 .ForMember(dest => dest.SquareRefreshToken, opt => opt.Ignore())
                 .ForMember(dest => dest.SquareTokenExpiresAt, opt => opt.Ignore());
 
