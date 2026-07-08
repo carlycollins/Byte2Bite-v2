@@ -22,6 +22,7 @@ var supabaseAnonKey = builder.Configuration["Supabase:AnonKey"]
     ?? throw new InvalidOperationException("Supabase:AnonKey is missing.");
 var supabaseServiceKey = builder.Configuration["Supabase:ServiceKey"]
     ?? throw new InvalidOperationException("Supabase:ServiceKey is missing.");
+var supabaseAuthIssuer = $"{supabaseUrl.TrimEnd('/')}/auth/v1";
 
 // AutoMapper
 builder.Services.AddAutoMapper(cfg => { }, typeof(AutoMapperProfile));
@@ -57,7 +58,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             ValidateIssuer = true,
             ValidateAudience = false,
-            ValidIssuer = supabaseUrl
+            ValidIssuers = new[] { supabaseUrl.TrimEnd('/'), supabaseAuthIssuer }
         };
     });
 
