@@ -21,6 +21,9 @@ namespace backend.Models
         [Column("square_access_token")]
         public string SquareAccessToken { get; set; } = string.Empty;
 
+        [Column("square_merchant_token")]
+        public string? SquareMerchantToken { get; set; }
+
         [Column("square_refresh_token")]
         public string? SquareRefreshToken { get; set; }
 

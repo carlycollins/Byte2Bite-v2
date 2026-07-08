@@ -100,6 +100,7 @@ namespace backend.Controllers
                         ZipCode = string.Empty,
                         SquareId = token.MerchantId,
                         SquareAccessToken = token.AccessToken,
+                        SquareMerchantToken = token.AccessToken,
                         SquareRefreshToken = token.RefreshToken,
                         SquareTokenExpiresAt = token.ExpiresAt
                     }) ?? throw new InvalidOperationException("Failed to create the restaurant.");
@@ -114,6 +115,7 @@ namespace backend.Controllers
                 {
                     restaurant.SquareId = token.MerchantId;
                     restaurant.SquareAccessToken = token.AccessToken;
+                    restaurant.SquareMerchantToken = token.AccessToken;
                     restaurant.SquareRefreshToken = token.RefreshToken;
                     restaurant.SquareTokenExpiresAt = token.ExpiresAt;
 
