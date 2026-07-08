@@ -1,4 +1,5 @@
-using System.Security.Claims;
+using System.Net.Http.Headers;
+using System.Text.Json;
 using backend.Models;
 using backend.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -14,32 +15,43 @@ namespace backend.Controllers
         private readonly ISupabaseService _supabase;
         private readonly ISquareOAuthService _squareOAuth;
         private readonly ISquareMenuSyncService _squareMenuSync;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IConfiguration _configuration;
         private readonly ILogger<SquareOAuthController> _logger;
 
         public SquareOAuthController(
             ISupabaseService supabase,
             ISquareOAuthService squareOAuth,
             ISquareMenuSyncService squareMenuSync,
+            IHttpClientFactory httpClientFactory,
+            IConfiguration configuration,
             ILogger<SquareOAuthController> logger)
         {
             _supabase = supabase;
             _squareOAuth = squareOAuth;
             _squareMenuSync = squareMenuSync;
+            _httpClientFactory = httpClientFactory;
+            _configuration = configuration;
             _logger = logger;
         }
 
-        [Authorize]
+        [AllowAnonymous]
         [HttpGet("authorize")]
-        public IActionResult Authorize()
+        public async Task<IActionResult> Authorize(CancellationToken cancellationToken)
         {
             try
             {
-                var subject = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
-                if (!Guid.TryParse(subject, out var userId)) return Unauthorized("Your session is no longer valid. Please sign in again.");
+                var authenticatedUser = await GetAuthenticatedSupabaseUserAsync(cancellationToken);
+                if (authenticatedUser is null)
+                {
+                    return Unauthorized("Your session is no longer valid. Please sign in again.");
+                }
 
                 return Ok(new
                 {
-                    authorizationUrl = _squareOAuth.CreateAuthorizationUrl(userId)
+                    authorizationUrl = _squareOAuth.CreateAuthorizationUrl(
+                        authenticatedUser.Value.UserId,
+                        authenticatedUser.Value.Email)
                 });
             }
             catch (InvalidOperationException ex)
@@ -69,8 +81,8 @@ namespace backend.Controllers
 
             try
             {
-                var userId = _squareOAuth.ReadState(state);
-                var profile = await EnsureProfileAsync(userId);
+                var (userId, email) = _squareOAuth.ReadState(state);
+                var profile = await EnsureProfileAsync(userId, email);
 
                 var token = await _squareOAuth.ExchangeCodeAsync(code, cancellationToken);
                 var restaurant = profile.Restaurant_Id.HasValue
@@ -130,12 +142,11 @@ namespace backend.Controllers
             return Redirect(QueryHelpers.AddQueryString(_squareOAuth.FrontendReturnUrl, query));
         }
 
-        private async Task<UserProfile> EnsureProfileAsync(Guid userId)
+        private async Task<UserProfile> EnsureProfileAsync(Guid userId, string? email)
         {
             var profile = await _supabase.GetUserBySupabaseIdAsync(userId);
             if (profile != null) return profile;
 
-            var email = User.FindFirstValue(ClaimTypes.Email) ?? User.FindFirstValue("email");
             return await _supabase.CreateUserAsync(new UserProfile
             {
                 supabaseId = userId,
@@ -158,6 +169,55 @@ namespace backend.Controllers
             }
 
             return $"Square Merchant {merchantId}";
+        }
+
+        private async Task<(Guid UserId, string? Email)?> GetAuthenticatedSupabaseUserAsync(
+            CancellationToken cancellationToken)
+        {
+            var authorization = Request.Headers.Authorization.ToString();
+            if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var accessToken = authorization["Bearer ".Length..].Trim();
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                return null;
+            }
+
+            var supabaseUrl = _configuration["Supabase:Url"]?.TrimEnd('/');
+            var supabaseAnonKey = _configuration["Supabase:AnonKey"];
+            if (string.IsNullOrWhiteSpace(supabaseUrl) || string.IsNullOrWhiteSpace(supabaseAnonKey))
+            {
+                throw new InvalidOperationException("Supabase OAuth validation settings are missing.");
+            }
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{supabaseUrl}/auth/v1/user");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Headers.Add("apikey", supabaseAnonKey);
+
+            using var response = await _httpClientFactory
+                .CreateClient()
+                .SendAsync(request, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Supabase rejected the Square OAuth bearer token with status {StatusCode}.",
+                    (int)response.StatusCode);
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var json = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            var root = json.RootElement;
+            var id = root.TryGetProperty("id", out var idElement) ? idElement.GetString() : null;
+            var email = root.TryGetProperty("email", out var emailElement) ? emailElement.GetString() : null;
+
+            return Guid.TryParse(id, out var userId)
+                ? (userId, email)
+                : null;
         }
     }
 }

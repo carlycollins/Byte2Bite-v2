@@ -8,8 +8,8 @@ namespace backend.Services
 
     public interface ISquareOAuthService
     {
-        string CreateAuthorizationUrl(Guid userId);
-        Guid ReadState(string state);
+        string CreateAuthorizationUrl(Guid userId, string? email = null);
+        (Guid UserId, string? Email) ReadState(string state);
         Task<SquareOAuthToken> ExchangeCodeAsync(string code, CancellationToken cancellationToken = default);
         string FrontendReturnUrl { get; }
     }
