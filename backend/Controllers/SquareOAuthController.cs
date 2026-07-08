@@ -47,11 +47,14 @@ namespace backend.Controllers
                     return Unauthorized("Your session is no longer valid. Please sign in again.");
                 }
 
+                var authorizationUrl = _squareOAuth.CreateAuthorizationUrl(
+                    authenticatedUser.Value.UserId,
+                    authenticatedUser.Value.Email);
+                _logger.LogInformation("Generated Square OAuth authorization URL: {AuthorizationUrl}", authorizationUrl);
+
                 return Ok(new
                 {
-                    authorizationUrl = _squareOAuth.CreateAuthorizationUrl(
-                        authenticatedUser.Value.UserId,
-                        authenticatedUser.Value.Email)
+                    authorizationUrl
                 });
             }
             catch (InvalidOperationException ex)
