@@ -32,13 +32,21 @@ namespace backend.Controllers
         [HttpGet("authorize")]
         public IActionResult Authorize()
         {
-            var subject = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
-            if (!Guid.TryParse(subject, out var userId)) return Unauthorized();
-
-            return Ok(new
+            try
             {
-                authorizationUrl = _squareOAuth.CreateAuthorizationUrl(userId)
-            });
+                var subject = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+                if (!Guid.TryParse(subject, out var userId)) return Unauthorized("Your session is no longer valid. Please sign in again.");
+
+                return Ok(new
+                {
+                    authorizationUrl = _squareOAuth.CreateAuthorizationUrl(userId)
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogError(ex, "Square OAuth authorization could not start.");
+                return StatusCode(500, "Square OAuth is not configured. Check Square:ApplicationId and Square:OAuthRedirectUri.");
+            }
         }
 
         [AllowAnonymous]

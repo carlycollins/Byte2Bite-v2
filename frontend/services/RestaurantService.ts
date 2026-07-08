@@ -68,10 +68,16 @@ async function getSquareAuthorizationUrl(): Promise<string> {
 
   if (!res.ok) {
     const error = await res.text();
-    throw new Error(error || "Failed to start Square authorization");
+    throw new Error(
+      error || `Failed to start Square authorization (${res.status})`
+    );
   }
 
   const body = await res.json();
+  if (!body.authorizationUrl) {
+    throw new Error("The backend did not return a Square authorization URL.");
+  }
+
   return body.authorizationUrl;
 }
 
